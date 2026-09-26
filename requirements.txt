@@ -1,0 +1,22 @@
+# Runtime dependencies for the heterogeneity pipeline.
+# Bounds are intentionally wide so a current pip can resolve them.
+#
+# Install PyTorch from the CPU index first on a machine without an NVIDIA GPU,
+# then install the rest. Otherwise a plain `pip install torch` may pull a
+# multi-gigabyte CUDA build. See the README.
+
+numpy>=1.26,<3
+pandas>=2.1,<4
+scipy>=1.11,<2
+scikit-learn>=1.4,<2
+matplotlib>=3.8,<4
+seaborn>=0.13,<1
+Pillow>=10,<13
+opencv-python-headless>=4.8,<6
+openslide-python>=1.3.1,<2
+pyarrow>=14,<27
+tqdm>=4.66,<5
+tifffile>=2024.1.30
+pyvips>=2.2,<4
+torch>=2.2
+torchvision>=0.17

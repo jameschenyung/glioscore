@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Generated slide runs (patches, embeddings, figures)
+outputs/
+
+# Model weight caches
+.cache/
+*.npy
+*.pt
