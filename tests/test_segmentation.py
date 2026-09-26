@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from src.dataset import segment_tissue
+from src.dataset import SATURATION_CEILING, SATURATION_FLOOR, segment_tissue
 
 
 def test_blank_glass_is_not_tissue():
@@ -18,7 +18,7 @@ def test_stained_block_is_kept_and_glass_margin_is_dropped():
     image[60:340, 70:330] = (190, 110, 170)
     image[80:320:6, 90:310:6] = (60, 24, 96)
     mask, threshold = segment_tissue(image)
-    assert threshold > 0
+    assert SATURATION_FLOOR <= threshold <= SATURATION_CEILING
     assert mask[200, 200] == 255
     assert mask[5, 5] == 0
     assert mask[390, 390] == 0

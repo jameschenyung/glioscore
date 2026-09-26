@@ -114,6 +114,8 @@ Synthetic slide (no biopsy file required):
 python main.py --demo --output-dir outputs/demo
 ```
 
+The demo paints four blocks (dense purple, pink, tan, red) inside a glass margin. With pretrained ResNet50 and `k=8` you should see about 100 patches, four large niches that sit on those blocks, and a few tiny niches on the boundaries. The heterogeneity score should be well above 0. Spatial mixing should be low, because each block is internally uniform — entropy says the slide is mixed, and the heatmap shows that the mix is regional. Niches below 2% of the patches do not count toward the diversity ratio, so that ratio can be near 0.5 even when `k` is 8.
+
 One real slide:
 
 ```bash

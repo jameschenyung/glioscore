@@ -45,6 +45,9 @@ from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
+# Seaborn draws bar categories as numeric strings. Matplotlib then logs an
+# INFO line suggesting they be cast to floats, which is wrong for niche ids.
+logging.getLogger("matplotlib.category").setLevel(logging.WARNING)
 
 # tab10 is readable for the default k=8 and does not imply a numeric order.
 NICHE_COLORS = [
@@ -428,7 +431,9 @@ def save_proportion_chart(
     counts = np.bincount(np.asarray(labels, dtype=int), minlength=n_clusters)
     frame = pd.DataFrame(
         {
-            "niche": [str(i) for i in range(n_clusters)],
+            # Integers, not numeric strings, so matplotlib does not treat the
+            # category labels as dates.
+            "niche": np.arange(n_clusters),
             "patches": counts.astype(int),
             "fraction": counts / max(int(counts.sum()), 1),
         }

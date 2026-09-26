@@ -32,9 +32,14 @@ logger = logging.getLogger(__name__)
 # slide stores resolution as MPP and not as an objective power.
 MPP_AT_20X = 0.5
 
-# Saturation below this (0-255) is treated as unstained glass. Otsu alone can
-# pick a tiny threshold on a nearly blank thumbnail and call JPEG noise tissue.
-SATURATION_FLOOR = 15
+# Saturation below this (0-255) is treated as unstained glass. A two-spike
+# histogram can make Otsu report 0, which would keep every faintly colored pixel.
+SATURATION_FLOOR = 12
+
+# Otsu on a slide that is mostly glass, plus a few strongly stained regions,
+# often lands far above the saturation of light eosin. Cap it so pale stained
+# tissue is not thrown away with the glass. Dense nuclei still pass either way.
+SATURATION_CEILING = 40
 
 # Pixels brighter than this in grayscale are glass or glare, not stain.
 GLASS_GRAY_MIN = 230
@@ -186,6 +191,7 @@ def slide_geometry(
 def segment_tissue(
     thumbnail_rgb: np.ndarray,
     saturation_floor: int = SATURATION_FLOOR,
+    saturation_ceiling: int = SATURATION_CEILING,
     glass_gray_min: int = GLASS_GRAY_MIN,
 ) -> tuple[np.ndarray, float]:
     """Build a binary tissue mask from a low-resolution RGB thumbnail.
@@ -193,17 +199,21 @@ def segment_tissue(
     Hematoxylin and eosin (the routine biopsy stain) colors nuclei blue-purple
     and cytoplasm pink. Empty glass is nearly white, so it has very low color
     saturation in HSV. Otsu's method picks a saturation threshold that splits
-    "has stain" from "does not". A brightness gate then drops glare and the
-    remaining white background. Small specks are removed.
+    "has stain" from "does not". That raw cut is then clipped to
+    ``[saturation_floor, saturation_ceiling]``: the floor stops a degenerate
+    threshold of 0 from calling JPEG noise tissue, and the ceiling stops a
+    glass-dominated histogram from setting the cut so high that light eosin
+    disappears. A brightness gate then drops glare. Small specks are removed.
 
     Args:
         thumbnail_rgb: uint8 array shaped (H, W, 3) in RGB order.
-        saturation_floor: Minimum HSV saturation kept as tissue.
+        saturation_floor: Lowest HSV saturation that may be called tissue.
+        saturation_ceiling: Highest cut Otsu is allowed to apply.
         glass_gray_min: Grayscale values at or above this are background.
 
     Returns:
         mask: uint8 array shaped (H, W), 255 on tissue and 0 on glass.
-        otsu_threshold: The saturation threshold Otsu selected, before the floor.
+        applied_threshold: Saturation cut actually used, after clipping Otsu.
     """
 
     if thumbnail_rgb.ndim != 3 or thumbnail_rgb.shape[2] != 3:
@@ -211,16 +221,26 @@ def segment_tissue(
     if thumbnail_rgb.dtype != np.uint8:
         thumbnail_rgb = np.clip(thumbnail_rgb, 0, 255).astype(np.uint8)
 
+    if saturation_ceiling < saturation_floor:
+        raise ValueError("saturation_ceiling must be >= saturation_floor")
+
     hsv = cv2.cvtColor(thumbnail_rgb, cv2.COLOR_RGB2HSV)
     # Median blur knocks out single-pixel compression noise before thresholding.
     saturation = cv2.medianBlur(hsv[:, :, 1], 5)
-    otsu_threshold, sat_mask = cv2.threshold(
+    raw_otsu, _ = cv2.threshold(
         saturation, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
-    if otsu_threshold < saturation_floor:
-        _, sat_mask = cv2.threshold(
-            saturation, saturation_floor, 255, cv2.THRESH_BINARY
-        )
+    applied_threshold = float(np.clip(raw_otsu, saturation_floor, saturation_ceiling))
+    _, sat_mask = cv2.threshold(
+        saturation, applied_threshold, 255, cv2.THRESH_BINARY
+    )
+    logger.debug(
+        "Saturation Otsu raw=%.1f applied=%.1f (clip [%s, %s])",
+        raw_otsu,
+        applied_threshold,
+        saturation_floor,
+        saturation_ceiling,
+    )
 
     gray = cv2.cvtColor(thumbnail_rgb, cv2.COLOR_RGB2GRAY)
     # BINARY_INV keeps the darker-than-glass pixels (stained tissue).
@@ -231,7 +251,7 @@ def segment_tissue(
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = _drop_small_components(mask, min_area_fraction=0.0005)
-    return mask, float(otsu_threshold)
+    return mask, applied_threshold
 
 
 def _drop_small_components(mask: np.ndarray, min_area_fraction: float) -> np.ndarray:
@@ -383,7 +403,7 @@ def extract_patches(
             logger.info("Subsampled tiles to max_patches=%s", max_patches)
 
         logger.info(
-            "Otsu saturation threshold=%.1f | kept %s patches | "
+            "Saturation threshold=%.1f | kept %s patches | "
             "patch %sx%s at %.1fx (level-0 size %s, stride %s)",
             otsu_threshold,
             len(candidates),

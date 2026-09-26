@@ -22,6 +22,9 @@ import cv2
 import numpy as np
 
 logger = logging.getLogger(__name__)
+# libvips chatters at INFO while it writes the pyramid. The slide path is
+# logged by this module after the file exists; the writer trace is not useful.
+logging.getLogger("pyvips").setLevel(logging.WARNING)
 
 
 def render_synthetic_he(size: int = 3072, seed: int = 0) -> np.ndarray:
@@ -41,8 +44,10 @@ def render_synthetic_he(size: int = 3072, seed: int = 0) -> np.ndarray:
     # Quadrants of the stained field, then a disk that mixes two of them.
     regions = [
         ((margin, mid, margin, mid), (214, 156, 186), (72, 36, 112), 0.18, 3),
-        ((margin, mid, mid, size - margin), (232, 186, 196), (96, 48, 92), 0.025, 3),
-        ((mid, size - margin, margin, mid), (214, 198, 176), (150, 140, 120), 0.012, 2),
+        # Pink stroma and tan necrosis are lighter than the purple and red
+        # quadrants, but still saturated enough that the tissue mask keeps them.
+        ((margin, mid, mid, size - margin), (230, 165, 186), (120, 48, 88), 0.03, 3),
+        ((mid, size - margin, margin, mid), (210, 170, 150), (130, 100, 84), 0.015, 2),
         ((mid, size - margin, mid, size - margin), (196, 92, 98), (120, 24, 36), 0.08, 5),
     ]
     for (y0, y1, x0, x1), background, nucleus, density, nucleus_px in regions:
