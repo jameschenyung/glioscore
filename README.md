@@ -106,31 +106,38 @@ The first real run also downloads ResNet50 ImageNet weights (about 100 MB) into 
 
 ### Example slide (recommended)
 
-This repository does not ship patient images. The walkthrough uses OpenSlide’s public Aperio sample [CMU-1-Small-Region.svs](https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs) (CC0) — a small crop of real H&E tissue (~2.2k×3.0k at 20×), not a glioblastoma case.
+This repository does not ship patient images. The walkthrough uses a **TCGA glioblastoma (brain)** whole-slide image, `TCGA-06-0743-01Z-00-DX1.svs` (~18k×28k at 20×, ~113 MB), redistributed in the [TCGA-mini](https://huggingface.co/datasets/W8Yi/TCGA-mini) Hugging Face dataset. Users are responsible for complying with [TCGA / GDC data-use](https://gdc.cancer.gov/access-data/data-access-policies) and publication policies.
 
-Download it into `data/`:
+Install the Hub CLI once, then download the slide:
 
 ```bash
+pip install huggingface_hub
 mkdir -p data
-curl -L -o data/CMU-1-Small-Region.svs \
-  https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs
+hf download W8Yi/TCGA-mini --repo-type dataset \
+  --include "slides/TCGA-06-0743-01Z-00-DX1.svs" \
+  --local-dir data/tcga_gbm
 ```
 
 On Windows (PowerShell):
 
 ```powershell
+.\.venv\Scripts\pip install huggingface_hub
 New-Item -ItemType Directory -Force -Path data | Out-Null
-curl.exe -L -o data/CMU-1-Small-Region.svs `
-  https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs
+.\.venv\Scripts\hf download W8Yi/TCGA-mini --repo-type dataset `
+  --include "slides/TCGA-06-0743-01Z-00-DX1.svs" `
+  --local-dir data/tcga_gbm
 ```
 
-Run the pipeline:
+Run the pipeline (cap patches so a full WSI finishes in a reasonable time on CPU):
 
 ```bash
-python main.py --slide data/CMU-1-Small-Region.svs --output-dir outputs/cmu1_small
+python main.py \
+  --slide data/tcga_gbm/slides/TCGA-06-0743-01Z-00-DX1.svs \
+  --output-dir outputs/tcga_06_0743 \
+  --max-patches 2000
 ```
 
-With pretrained ResNet50 and `k=8` you should get on the order of **30** tissue patches (the rest is glass), a **heterogeneity score around 0.5–0.6**, and one dominant niche covering most of the crop with smaller niches on denser epithelium and edges. **Spatial mixing** is typically higher than on a cartoon of four equal blocks, because minority niches sit next to the main tissue rather than in large separate regions. Inspect `outputs/cmu1_small/cluster_heatmap.png`, `cluster_proportions.png`, and `heterogeneity_report.json`.
+With pretrained ResNet50, `k=8`, and `--max-patches 2000`, a typical run on this slide keeps on the order of **~1900** tissue patches, a **heterogeneity score around 0.65**, several large niches plus a few tiny boundary niches (diversity ratio near 0.5), and **spatial mixing** around 0.3 (mix is partly regional). Inspect `outputs/tcga_06_0743/cluster_heatmap.png`, `cluster_proportions.png`, and `heterogeneity_report.json`. Scores will move a little if you change `k`, the encoder, or the patch cap.
 
 Your own slide:
 
@@ -150,11 +157,11 @@ python main.py --slide biopsy.svs --output-dir outputs/biopsy \
 
 `--max-patches` keeps an even spread of tiles across the slide when a WSI would otherwise produce tens of thousands of patches.
 
-Public glioblastoma slides (for example the TCGA-GBM cohort) are distributed as `.svs` files by the NCI Genomic Data Commons. Download those under their data-use terms and pass the local path to `--slide`.
+Additional public GBM slides are available from the NCI Genomic Data Commons (TCGA-GBM) and from CPTAC-GBM on TCIA; download those under their data-use terms and pass the local path to `--slide`.
 
 ### Offline fallback (`--demo`)
 
-If you cannot download a slide, `python main.py --demo --output-dir outputs/demo` builds a synthetic four-region cartoon and runs the same pipeline. That path does not need OpenSlide on Windows (flat TIFF + in-memory fallback). Prefer the CMU-1 example above when you want a real `.svs`.
+If you cannot download a slide, `python main.py --demo --output-dir outputs/demo` builds a synthetic four-region cartoon and runs the same pipeline. That path does not need OpenSlide on Windows (flat TIFF + in-memory fallback). Prefer the TCGA-GBM example above when you want a real brain-tumor `.svs`.
 
 ## Tests
 
@@ -163,11 +170,11 @@ pip install pytest
 pytest
 ```
 
-The tests cover the entropy math, the tissue mask, and a tiny end-to-end path that uses a randomly initialized ResNet50 so it does not need the ImageNet download. The CMU-1 command above (or `python main.py --demo`) is the run that uses pretrained weights.
+The tests cover the entropy math, the tissue mask, and a tiny end-to-end path that uses a randomly initialized ResNet50 so it does not need the ImageNet download. The TCGA-GBM command above (or `python main.py --demo`) is the run that uses pretrained weights.
 
 ## How the 20× patch size is chosen
 
-Many diagnostic scans are acquired at 40× (about 0.25 µm per pixel). A 256×256 patch at 20× should cover twice that length on the glass, i.e. 512 level-0 pixels, which are then resized to 256. The slide's `openslide.objective-power` property (or microns-per-pixel, if power is missing) drives that conversion. If a file records neither, level 0 is treated as already being at the requested magnification. The CMU-1 example records AppMag 20, so each 256×256 patch is read directly from level 0.
+Many diagnostic scans are acquired at 40× (about 0.25 µm per pixel). A 256×256 patch at 20× should cover twice that length on the glass, i.e. 512 level-0 pixels, which are then resized to 256. The slide's `openslide.objective-power` property (or microns-per-pixel, if power is missing) drives that conversion. If a file records neither, level 0 is treated as already being at the requested magnification. The TCGA-06-0743 example records objective power 20 (~0.50 µm/px), so each 256×256 patch is read directly from level 0.
 
 Patches are stored at 256×256. The encoder resizes them to 224×224 because that is the ImageNet / DINOv2 training size (and 224 is divisible by DINOv2's patch size of 14).
 

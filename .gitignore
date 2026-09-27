@@ -9,6 +9,9 @@ __pycache__/
 # Generated slide runs (patches, embeddings, figures)
 outputs/
 
+# Downloaded whole-slide examples (not redistributed in-repo)
+data/
+
 # Model weight caches
 .cache/
 *.npy
