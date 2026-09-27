@@ -30,7 +30,7 @@ main.py                         command-line runner
 src/dataset.py                  OpenSlide loading, tissue mask, tiling
 src/extract_features.py         patch Dataset, ResNet50 / DINOv2, embeddings
 src/quantify_heterogeneity.py   K-Means / GMM, entropy, heatmap
-src/synthetic.py                fake slide used by --demo
+src/synthetic.py                optional fake slide for --demo (offline fallback)
 requirements.txt
 ```
 
@@ -56,7 +56,7 @@ outputs/<slide>/
 
 ## System dependency: OpenSlide
 
-`openslide-python` is only a wrapper. The OpenSlide C library has to be installed first.
+`openslide-python` is only a wrapper. The OpenSlide C library has to be installed first. Real `.svs` files (including the example below) need it.
 
 Ubuntu / Debian:
 
@@ -65,22 +65,15 @@ sudo apt-get update
 sudo apt-get install -y libopenslide0 openslide-tools
 ```
 
-The synthetic `--demo` slide is written with libvips. Install that too if you want the demo:
-
-```bash
-sudo apt-get install -y libvips42
-```
-
 macOS (Homebrew):
 
 ```bash
-brew install openslide vips
+brew install openslide
 ```
 
 Windows:
 
-- For `--demo`, you do **not** need system OpenSlide or libvips. The demo writes a flat TIFF plus a `.npy` and tiles through an in-memory fallback if the DLLs are missing.
-- For real `.svs` files, install the bundled binaries with `pip install openslide-bin` (also listed in `requirements.txt`), or download OpenSlide from [openslide.org](https://openslide.org/download/) and add the folder that contains `libopenslide-*.dll` to `PATH`.
+Install the bundled binaries with `pip install openslide-bin` (also listed in `requirements.txt`), or download OpenSlide from [openslide.org](https://openslide.org/download/) and add the folder that contains `libopenslide-*.dll` to `PATH`.
 
 Check the system library with:
 
@@ -111,15 +104,35 @@ The first real run also downloads ResNet50 ImageNet weights (about 100 MB) into 
 
 ## Run
 
-Synthetic slide (no biopsy file required):
+### Example slide (recommended)
+
+This repository does not ship patient images. The walkthrough uses OpenSlide’s public Aperio sample [CMU-1-Small-Region.svs](https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs) (CC0) — a small crop of real H&E tissue (~2.2k×3.0k at 20×), not a glioblastoma case.
+
+Download it into `data/`:
 
 ```bash
-python main.py --demo --output-dir outputs/demo
+mkdir -p data
+curl -L -o data/CMU-1-Small-Region.svs \
+  https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs
 ```
 
-The demo paints four blocks (dense purple, pink, tan, red) inside a glass margin. With pretrained ResNet50 and `k=8` you should see about 100 patches, four large niches that sit on those blocks, and a few tiny niches on the boundaries. The heterogeneity score should be well above 0. Spatial mixing should be low, because each block is internally uniform — entropy says the slide is mixed, and the heatmap shows that the mix is regional. Niches below 2% of the patches do not count toward the diversity ratio, so that ratio can be near 0.5 even when `k` is 8.
+On Windows (PowerShell):
 
-One real slide:
+```powershell
+New-Item -ItemType Directory -Force -Path data | Out-Null
+curl.exe -L -o data/CMU-1-Small-Region.svs `
+  https://openslide.cs.cmu.edu/download/openslide-testdata/Aperio/CMU-1-Small-Region.svs
+```
+
+Run the pipeline:
+
+```bash
+python main.py --slide data/CMU-1-Small-Region.svs --output-dir outputs/cmu1_small
+```
+
+With pretrained ResNet50 and `k=8` you should get on the order of **30** tissue patches (the rest is glass), a **heterogeneity score around 0.5–0.6**, and one dominant niche covering most of the crop with smaller niches on denser epithelium and edges. **Spatial mixing** is typically higher than on a cartoon of four equal blocks, because minority niches sit next to the main tissue rather than in large separate regions. Inspect `outputs/cmu1_small/cluster_heatmap.png`, `cluster_proportions.png`, and `heterogeneity_report.json`.
+
+Your own slide:
 
 ```bash
 python main.py --slide /path/to/biopsy.svs --output-dir outputs/biopsy
@@ -137,7 +150,11 @@ python main.py --slide biopsy.svs --output-dir outputs/biopsy \
 
 `--max-patches` keeps an even spread of tiles across the slide when a WSI would otherwise produce tens of thousands of patches.
 
-Public glioblastoma slides (for example the TCGA-GBM cohort) are distributed as `.svs` files by the NCI Genomic Data Commons. Download those under their data-use terms and pass the local path to `--slide`. This repository does not ship patient images.
+Public glioblastoma slides (for example the TCGA-GBM cohort) are distributed as `.svs` files by the NCI Genomic Data Commons. Download those under their data-use terms and pass the local path to `--slide`.
+
+### Offline fallback (`--demo`)
+
+If you cannot download a slide, `python main.py --demo --output-dir outputs/demo` builds a synthetic four-region cartoon and runs the same pipeline. That path does not need OpenSlide on Windows (flat TIFF + in-memory fallback). Prefer the CMU-1 example above when you want a real `.svs`.
 
 ## Tests
 
@@ -146,11 +163,11 @@ pip install pytest
 pytest
 ```
 
-The tests cover the entropy math, the tissue mask, and a tiny end-to-end demo that uses a randomly initialized ResNet50 so it does not need the ImageNet download. `python main.py --demo` is the run that uses pretrained weights.
+The tests cover the entropy math, the tissue mask, and a tiny end-to-end path that uses a randomly initialized ResNet50 so it does not need the ImageNet download. The CMU-1 command above (or `python main.py --demo`) is the run that uses pretrained weights.
 
 ## How the 20× patch size is chosen
 
-Many diagnostic scans are acquired at 40× (about 0.25 µm per pixel). A 256×256 patch at 20× should cover twice that length on the glass, i.e. 512 level-0 pixels, which are then resized to 256. The slide's `openslide.objective-power` property (or microns-per-pixel, if power is missing) drives that conversion. If a file records neither, level 0 is treated as already being at the requested magnification. That is the case for the synthetic demo TIFF.
+Many diagnostic scans are acquired at 40× (about 0.25 µm per pixel). A 256×256 patch at 20× should cover twice that length on the glass, i.e. 512 level-0 pixels, which are then resized to 256. The slide's `openslide.objective-power` property (or microns-per-pixel, if power is missing) drives that conversion. If a file records neither, level 0 is treated as already being at the requested magnification. The CMU-1 example records AppMag 20, so each 256×256 patch is read directly from level 0.
 
 Patches are stored at 256×256. The encoder resizes them to 224×224 because that is the ImageNet / DINOv2 training size (and 224 is divisible by DINOv2's patch size of 14).
 
