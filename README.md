@@ -77,7 +77,10 @@ macOS (Homebrew):
 brew install openslide vips
 ```
 
-Windows: install the OpenSlide binaries from [openslide.org](https://openslide.org/download/) and add the directory that contains `libopenslide-1.dll` (or the equivalent DLL shipped with that build) to `PATH`. Then install the Python package from the next section.
+Windows:
+
+- For `--demo`, you do **not** need system OpenSlide or libvips. The demo writes a flat TIFF plus a `.npy` and tiles through an in-memory fallback if the DLLs are missing.
+- For real `.svs` files, install the bundled binaries with `pip install openslide-bin` (also listed in `requirements.txt`), or download OpenSlide from [openslide.org](https://openslide.org/download/) and add the folder that contains `libopenslide-*.dll` to `PATH`.
 
 Check the system library with:
 

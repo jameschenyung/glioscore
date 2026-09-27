@@ -14,9 +14,13 @@ seaborn>=0.13,<1
 Pillow>=10,<13
 opencv-python-headless>=4.8,<6
 openslide-python>=1.3.1,<2
+# Bundled OpenSlide DLLs for Windows/macOS. Optional on Linux if libopenslide0 is installed.
+openslide-bin>=4.0.0
 pyarrow>=14,<27
 tqdm>=4.66,<5
 tifffile>=2024.1.30
+# Optional: faster pyramidal TIFF for --demo when the system libvips is present.
+# Safe to skip on Windows; the demo falls back to tifffile + ArraySlide.
 pyvips>=2.2,<4
 torch>=2.2
 torchvision>=0.17

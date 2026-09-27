@@ -76,32 +76,118 @@ class SlideGeometry:
     stride_level0: int
 
 
-def load_wsi(slide_path: str | Path):
-    """Open a ``.svs``, ``.tif``, or other OpenSlide-supported whole-slide file.
+class ArraySlide:
+    """Minimal OpenSlide-compatible handle over an in-memory RGB array.
 
-    The returned object is an ``openslide.OpenSlide`` handle. Callers must
-    close it (``slide.close()``) when they are done reading.
+    Used for the synthetic ``--demo`` on machines that do not have the
+    OpenSlide or libvips DLLs (common on Windows). Real diagnostic ``.svs``
+    files still need OpenSlide.
     """
 
-    try:
-        import openslide
-    except ImportError as exc:
-        raise OpenSlideUnavailableError(
-            "openslide-python is not installed, or the OpenSlide system library "
-            "is missing. See the README section 'System dependency: OpenSlide'."
-        ) from exc
+    def __init__(self, rgb: np.ndarray, name: str = "array-slide") -> None:
+        if rgb.ndim != 3 or rgb.shape[2] != 3:
+            raise ValueError("rgb must have shape (H, W, 3)")
+        self._rgb = np.ascontiguousarray(rgb, dtype=np.uint8)
+        self._name = name
+        height, width = self._rgb.shape[:2]
+        self.dimensions = (width, height)
+        self.level_count = 1
+        self.level_dimensions = ((width, height),)
+        self.level_downsamples = (1.0,)
+        self.properties: dict[str, str] = {}
+
+    def get_best_level_for_downsample(self, downsample: float) -> int:
+        return 0
+
+    def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
+        image = Image.fromarray(self._rgb, mode="RGB")
+        image.thumbnail(size, Image.Resampling.BILINEAR)
+        return image
+
+    def read_region(
+        self,
+        location: tuple[int, int],
+        level: int,
+        size: tuple[int, int],
+    ) -> Image.Image:
+        if level != 0:
+            raise ValueError("ArraySlide only exposes level 0")
+        x, y = location
+        width, height = size
+        # Match OpenSlide: out-of-bounds reads are padded with transparent black.
+        canvas = np.zeros((height, width, 4), dtype=np.uint8)
+        src_x0 = max(0, x)
+        src_y0 = max(0, y)
+        src_x1 = min(self.dimensions[0], x + width)
+        src_y1 = min(self.dimensions[1], y + height)
+        if src_x0 < src_x1 and src_y0 < src_y1:
+            dst_x0 = src_x0 - x
+            dst_y0 = src_y0 - y
+            patch = self._rgb[src_y0:src_y1, src_x0:src_x1]
+            canvas[dst_y0 : dst_y0 + patch.shape[0], dst_x0 : dst_x0 + patch.shape[1], :3] = patch
+            canvas[dst_y0 : dst_y0 + patch.shape[0], dst_x0 : dst_x0 + patch.shape[1], 3] = 255
+        return Image.fromarray(canvas, mode="RGBA")
+
+    def close(self) -> None:
+        return None
+
+
+def load_wsi(slide_path: str | Path):
+    """Open a ``.svs``, ``.tif``, or other whole-slide file.
+
+    Prefer OpenSlide. If the system library is missing or the file cannot be
+    opened, fall back to an in-memory ``ArraySlide`` for the synthetic demo
+    (sibling ``.npy``) or a simple RGB TIFF/PNG that Pillow / tifffile can read.
+    Callers must close the returned handle when they are done.
+    """
 
     path = Path(slide_path)
     if not path.is_file():
         raise FileNotFoundError(f"Slide not found: {path}")
 
+    slide = _try_openslide(path)
+    if slide is not None:
+        return slide
+
+    array_slide = _try_array_slide(path)
+    if array_slide is not None:
+        logger.warning(
+            "OpenSlide unavailable or could not open %s; using ArraySlide fallback.",
+            path.name,
+        )
+        logger.info(
+            "Opened %s | levels=%s | level-0 size=%s",
+            path.name,
+            array_slide.level_count,
+            array_slide.dimensions,
+        )
+        return array_slide
+
+    raise OpenSlideUnavailableError(
+        "OpenSlide could not open this slide and no ArraySlide fallback was "
+        "available. On Windows, install `openslide-bin` (`pip install openslide-bin`) "
+        "or the OpenSlide binaries from openslide.org, then retry. The --demo "
+        "path should not need that after a fresh pull."
+    )
+
+
+def _try_openslide(path: Path):
+    try:
+        # Prefer the binary wheels when present so Windows finds the DLL.
+        import openslide_bin  # noqa: F401
+    except ImportError:
+        pass
+    try:
+        import openslide
+    except (ImportError, OSError) as exc:
+        logger.debug("openslide import failed: %s", exc)
+        return None
+
     try:
         slide = openslide.OpenSlide(str(path))
     except openslide.OpenSlideError as exc:
-        raise RuntimeError(
-            f"OpenSlide could not read {path.name}. The file may be corrupt or "
-            "use a format this OpenSlide build does not support."
-        ) from exc
+        logger.debug("OpenSlide could not open %s: %s", path.name, exc)
+        return None
 
     logger.info(
         "Opened %s | levels=%s | level-0 size=%s",
@@ -110,6 +196,36 @@ def load_wsi(slide_path: str | Path):
         slide.dimensions,
     )
     return slide
+
+
+def _try_array_slide(path: Path) -> ArraySlide | None:
+    """Load a demo ``.npy`` sibling or a simple RGB image as ArraySlide."""
+
+    npy_path = path.with_suffix(".npy")
+    if npy_path.is_file():
+        rgb = np.load(npy_path)
+        return ArraySlide(rgb, name=path.name)
+
+    suffix = path.suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".bmp", ".webp"}:
+        with Image.open(path) as image:
+            return ArraySlide(np.asarray(image.convert("RGB")), name=path.name)
+
+    if suffix in {".tif", ".tiff"}:
+        try:
+            import tifffile
+
+            rgb = tifffile.imread(path)
+            if rgb.ndim == 3 and rgb.shape[2] >= 3:
+                return ArraySlide(np.asarray(rgb[..., :3]), name=path.name)
+        except Exception as exc:
+            logger.debug("tifffile could not read %s: %s", path.name, exc)
+        try:
+            with Image.open(path) as image:
+                return ArraySlide(np.asarray(image.convert("RGB")), name=path.name)
+        except Exception as exc:
+            logger.debug("Pillow could not read %s: %s", path.name, exc)
+    return None
 
 
 def infer_objective_power(slide) -> float | None:

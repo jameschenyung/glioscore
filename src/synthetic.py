@@ -85,18 +85,20 @@ def render_synthetic_he(size: int = 3072, seed: int = 0) -> np.ndarray:
 
 
 def generate_synthetic_wsi(output_path: str | Path, size: int = 3072, seed: int = 0) -> Path:
-    """Write a pyramidal tiled TIFF that OpenSlide can open.
+    """Write a stand-in slide for ``--demo``.
 
-    libvips (``pyvips``) is preferred because OpenSlide reliably reads its
-    JPEG pyramids. If libvips is not installed, a single-resolution tiled
-    TIFF is written with ``tifffile`` instead. Either file is a stand-in for
-    an ``.svs`` biopsy, already at the 20x pixel size the tiler expects when
-    a scan does not record an objective power.
+    Prefer a pyramidal JPEG TIFF via libvips when the system library is
+    present. On Windows that library is often missing even if the ``pyvips``
+    wheel is installed, so we fall back to a flat TIFF written with
+    ``tifffile``. A sibling ``.npy`` of the RGB array is always saved so the
+    demo can still tile through ``ArraySlide`` when OpenSlide DLLs are absent.
     """
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     rgb = render_synthetic_he(size=size, seed=seed)
+    # ArraySlide looks for this beside the TIFF when OpenSlide cannot open it.
+    np.save(output_path.with_suffix(".npy"), rgb)
     if _write_with_pyvips(rgb, output_path):
         logger.info("Wrote synthetic pyramidal slide to %s", output_path)
         return output_path
@@ -149,19 +151,21 @@ def _paint_cellular_region(
 
 
 def _write_with_pyvips(rgb: np.ndarray, output_path: Path) -> bool:
+    # On Windows, `import pyvips` often raises OSError for a missing
+    # libvips-42.dll even though the Python package itself is installed.
     try:
         import pyvips
-    except ImportError:
-        logger.warning("pyvips is not installed; falling back to a flat TIFF")
+    except (ImportError, OSError) as exc:
+        logger.warning("pyvips unavailable (%s); falling back to a flat TIFF", exc)
         return False
 
     array = np.ascontiguousarray(rgb)
     height, width, bands = array.shape
     # Keep the byte buffer alive until copy() has its own pixel storage.
     buffer = array.tobytes()
-    image = pyvips.Image.new_from_memory(buffer, width, height, bands, "uchar")
-    image = image.copy()
     try:
+        image = pyvips.Image.new_from_memory(buffer, width, height, bands, "uchar")
+        image = image.copy()
         image.tiffsave(
             str(output_path),
             tile=True,
@@ -181,11 +185,22 @@ def _write_with_pyvips(rgb: np.ndarray, output_path: Path) -> bool:
 def _write_with_tifffile(rgb: np.ndarray, output_path: Path) -> None:
     import tifffile
 
-    tifffile.imwrite(
-        output_path,
-        np.ascontiguousarray(rgb),
-        photometric="rgb",
-        tile=(256, 256),
-        compression="jpeg",
-        compressionargs={"level": 90},
-    )
+    array = np.ascontiguousarray(rgb)
+    # Prefer JPEG tiles when imagecodecs is available; otherwise write raw
+    # tiles so the demo does not depend on an extra codec wheel.
+    try:
+        tifffile.imwrite(
+            output_path,
+            array,
+            photometric="rgb",
+            tile=(256, 256),
+            compression="jpeg",
+            compressionargs={"level": 90},
+        )
+    except Exception:
+        tifffile.imwrite(
+            output_path,
+            array,
+            photometric="rgb",
+            tile=(256, 256),
+        )
