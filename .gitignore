@@ -26,3 +26,11 @@ data/lgggbm_cnn_byRegion_VGG19.rds
 .cache/
 *.npy
 *.pt
+
+# TCGA glioma tiles (PoC / FM comparison) — never commit
+data/tiles_tcga/
+data/tiles_selected_TCGA_LGG_GBM.tar.gz
+*.tar.gz
+data/**/*.rds
+data/metadata_tcga_tiles.csv
+data/tiles_tcga/
