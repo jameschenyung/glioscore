@@ -28,3 +28,5 @@ data/tiles_tcga/
 data/tiles_selected_TCGA_LGG_GBM.tar.gz
 *.tar.gz
 data/**/*.rds
+data/metadata_tcga_tiles.csv
+data/tiles_tcga/
