@@ -9,6 +9,9 @@ __pycache__/
 # Generated slide runs (patches, embeddings, figures)
 outputs/
 
+# Synthetic / local tile trees used for Stage 2 smoke tests
+data/tiles/
+
 # Model weight caches
 .cache/
 *.npy

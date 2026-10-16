@@ -24,3 +24,7 @@ tifffile>=2024.1.30
 pyvips>=2.2,<4
 torch>=2.2
 torchvision>=0.17
+# Stage 2 supervised path: DINOv2 / other foundation encoders via timm.
+timm>=1.0,<2
+# Stage 3 supervised path: XGBoost on tile embeddings.
+xgboost>=2.0,<4
