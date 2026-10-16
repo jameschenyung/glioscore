@@ -18,7 +18,9 @@ data/**/*.svs
 data/**/*.tif
 data/**/*.tiff
 
-# Large manager-provided R feature matrices (place locally; see data/README.md)
+# Large manager-provided R feature matrices — NEVER commit/push (see data/README.md)
+*.rds
+data/*.rds
 data/**/*.rds
 data/lgggbm_cnn_byRegion_VGG19.rds
 
