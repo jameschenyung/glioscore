@@ -2,9 +2,13 @@
 """
 VGG19-RDS baseline — XGBoost on Havoc-region VGG19 features from an R .rds file.
 
-Loads ``data/lgggbm_cnn_byRegion_VGG19.rds`` (manager-provided). Rows are Havoc
-regions (e.g. blue / green / yellow) across slides and patients; columns are
-VGG19 feature dimensions. Splits and evaluates at the **patient** level only.
+Loads the manager-provided VGG19-by-region ``.rds``. Default search order when
+``--rds`` is omitted: ``data/lgggbm_cnn_byRegion_VGG19.rds`` (cloud/Linux), then
+the canonical user path
+``C:\\Users\\james\\Downloads\\lgggbm_cnn_byRegion_VGG19.rds`` if that file
+exists. No copy into ``data/`` is required. Rows are Havoc regions (e.g. blue /
+green / yellow) across slides and patients; columns are VGG19 feature
+dimensions. Splits and evaluates at the **patient** level only.
 
 PATIENT_ID rule
 ---------------
@@ -35,6 +39,7 @@ Usage
 -----
   python scripts/train_vgg19_rds_baseline.py
   python scripts/train_vgg19_rds_baseline.py --rds data/lgggbm_cnn_byRegion_VGG19.rds
+  python scripts/train_vgg19_rds_baseline.py --rds "C:\\Users\\james\\Downloads\\lgggbm_cnn_byRegion_VGG19.rds"
 """
 
 from __future__ import annotations
@@ -56,7 +61,10 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# Cloud / Linux default (optional local copy — not required).
 DEFAULT_RDS = REPO_ROOT / "data" / "lgggbm_cnn_byRegion_VGG19.rds"
+# Canonical location on the user's Windows machine (preferred; leave in place).
+CANONICAL_USER_RDS = Path(r"C:\Users\james\Downloads\lgggbm_cnn_byRegion_VGG19.rds")
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs"
 DEFAULT_SEED = 42
 DEFAULT_TEST_SIZE = 1.0 / 3.0
@@ -114,8 +122,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--rds",
         type=Path,
-        default=DEFAULT_RDS,
-        help=f"Path to VGG19-by-region .rds (default: {DEFAULT_RDS})",
+        default=None,
+        help=(
+            "Path to VGG19-by-region .rds. If omitted, tries "
+            f"{DEFAULT_RDS} then the canonical user path "
+            f"{CANONICAL_USER_RDS} when that file exists. "
+            "Override freely; no copy into data/ is required."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -149,15 +162,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def resolve_rds_path(cli_path: Path | None) -> Path:
+    """
+    Resolve the RDS path.
+
+    Explicit ``--rds`` always wins. Otherwise prefer ``data/...`` when present
+    (cloud/Linux), then the canonical Windows Downloads path if that file
+    exists. If neither is found, return the data/ default so the missing-file
+    error still names a concrete path.
+    """
+    if cli_path is not None:
+        return cli_path.expanduser()
+    if DEFAULT_RDS.is_file():
+        return DEFAULT_RDS
+    if CANONICAL_USER_RDS.is_file():
+        return CANONICAL_USER_RDS
+    return DEFAULT_RDS
+
+
 def require_rds(path: Path) -> None:
     if path.is_file():
         return
     raise FileNotFoundError(
         f"VGG19 RDS file not found: {path}\n"
-        "Copy the manager file to that path, e.g.:\n"
-        "  data/lgggbm_cnn_byRegion_VGG19.rds\n"
-        "Source on the user machine (example):\n"
-        "  C:\\Users\\james\\Downloads\\lgggbm_cnn_byRegion_VGG19.rds"
+        "Pass --rds to the file on disk, or leave it at the canonical path:\n"
+        f"  {CANONICAL_USER_RDS}\n"
+        "Optional cloud/Linux location (no copy required):\n"
+        f"  {DEFAULT_RDS}"
     )
 
 
@@ -576,9 +607,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     out = args.output_dir
     out.mkdir(parents=True, exist_ok=True)
+    rds_path = resolve_rds_path(args.rds)
 
     try:
-        frame = load_rds_frame(args.rds)
+        print(f"Using RDS: {rds_path}")
+        frame = load_rds_frame(rds_path)
         raw_ids = resolve_row_labels(frame)
         patient_ids = assign_patient_ids(raw_ids)
         labels, label_doc = infer_labels(frame, raw_ids)
@@ -608,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics["n_train_patients"] = len(train_patients)
         metrics["n_test_patients"] = len(test_patients)
         metrics["label_source"] = label_doc
-        metrics["rds_path"] = str(args.rds)
+        metrics["rds_path"] = str(rds_path)
 
         print_report(metrics, label_doc, train_patients, test_patients)
 
