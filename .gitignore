@@ -18,6 +18,10 @@ data/**/*.svs
 data/**/*.tif
 data/**/*.tiff
 
+# Large manager-provided R feature matrices (place locally; see data/README.md)
+data/**/*.rds
+data/lgggbm_cnn_byRegion_VGG19.rds
+
 # Model weight caches
 .cache/
 *.npy

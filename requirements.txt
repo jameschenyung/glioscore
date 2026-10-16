@@ -28,3 +28,5 @@ torchvision>=0.17
 timm>=1.0,<2
 # Stage 3 supervised path: XGBoost on tile embeddings.
 xgboost>=2.0,<4
+# VGG19-RDS baseline: load manager-provided Havoc-region feature matrices.
+pyreadr>=0.5,<1
