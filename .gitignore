@@ -9,8 +9,14 @@ __pycache__/
 # Generated slide runs (patches, embeddings, figures)
 outputs/
 
+# Synthetic / local tile trees used for Stage 2 smoke tests
+data/tiles/
+
 # Downloaded whole-slide examples (not redistributed in-repo)
-data/
+data/tcga_gbm/
+data/**/*.svs
+data/**/*.tif
+data/**/*.tiff
 
 # Model weight caches
 .cache/
