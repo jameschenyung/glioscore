@@ -1,6 +1,15 @@
-# Glioblastoma intratumoral heterogeneity pipeline
+# Glioblastoma / glioma tile pipelines (glioscore)
 
-This repository measures how morphologically mixed one biopsy slide is.
+This repo has **two paths**:
+
+1. **Heterogeneity** (`src/`, `main.py`) — unsupervised niche clustering and a per-slide Shannon entropy score (original pipeline below).
+2. **Supervised classification** (`scripts/`) — patient-level train/test split → DINOv2 tile embeddings → XGBoost. Stages: `scripts/split_patients.py` → `scripts/extract_features.py` → `scripts/train_xgboost.py`. Metadata: `data/metadata.csv` (`patient_id`, `slide_id`, `tile_path`, `label`). See `data/README.md`.
+
+---
+
+# Heterogeneity pipeline
+
+This path measures how morphologically mixed one biopsy slide is.
 
 A whole-slide image (WSI) is a pyramid scan of a glass slide, often several gigabytes, stored as `.svs` or `.tif`. Most of the pixels are empty glass. The pipeline:
 
@@ -26,11 +35,15 @@ H = -sum_i p_i log2(p_i)
 ## Layout
 
 ```
-main.py                         command-line runner
+main.py                         heterogeneity CLI runner
 src/dataset.py                  OpenSlide loading, tissue mask, tiling
 src/extract_features.py         patch Dataset, ResNet50 / DINOv2, embeddings
 src/quantify_heterogeneity.py   K-Means / GMM, entropy, heatmap
 src/synthetic.py                fake slide used by --demo
+scripts/split_patients.py       Stage 1: patient-level train/test split
+scripts/extract_features.py     Stage 2: DINOv2 tile embeddings (timm)
+scripts/train_xgboost.py        Stage 3: XGBoost on embeddings
+data/                           metadata CSV + optional example fixture
 requirements.txt
 ```
 
