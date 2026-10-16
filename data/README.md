@@ -20,4 +20,5 @@ python3 scripts/split_patients.py --metadata data/example_metadata.csv
 python3 scripts/extract_features.py --metadata data/example_metadata.csv \
   --synthetic-tiles --no-pretrained
 # or wiring-only: add --dry-run
+python3 scripts/train_xgboost.py
 ```
