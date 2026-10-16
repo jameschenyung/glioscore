@@ -183,12 +183,16 @@ def index_archive(archive: Path) -> list[dict]:
             if pid is None:
                 skipped_no_patient += 1
                 continue
+            size = int(member.size) if member.size is not None else 0
+            if size <= 0:
+                # Some archive members are empty 0-byte "JPEGs"; skip them.
+                continue
             records.append(
                 {
                     "member": name,
                     "patient_id": pid,
                     "path_label": extract_label_token(name),
-                    "size": int(member.size) if member.size is not None else 0,
+                    "size": size,
                 }
             )
     print(
