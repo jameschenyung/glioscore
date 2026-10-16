@@ -36,16 +36,22 @@ The script parses `PATIENT_ID` as the TCGA barcode prefix `TCGA-XX-XXXX` from
 row names, splits **patients** (~1/3 test, seed 42), trains XGBoost, and
 writes metrics under `outputs/`.
 
-Windows (canonical path):
+Windows one-liner (clone/checkout + venv + train + print metrics):
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/jameschenyung/glioscore/cursor/vgg19-rds-baseline-92d1/scripts/run_vgg19_baseline_windows.ps1 | iex"
+```
+
+Or from an existing checkout on the PR branch:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_vgg19_baseline_windows.ps1
+```
+
+Direct train (venv already set up):
 
 ```bat
 python scripts/train_vgg19_rds_baseline.py --rds "C:\Users\james\Downloads\lgggbm_cnn_byRegion_VGG19.rds"
-```
-
-Or, if the file is already at that Downloads path, simply:
-
-```bat
-python scripts/train_vgg19_rds_baseline.py
 ```
 
 Stage 2 smoke test (synthetic tiles, no pretrained download):
