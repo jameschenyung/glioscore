@@ -12,6 +12,12 @@ outputs/
 # Synthetic / local tile trees used for Stage 2 smoke tests
 data/tiles/
 
+# Downloaded whole-slide examples (not redistributed in-repo)
+data/tcga_gbm/
+data/**/*.svs
+data/**/*.tif
+data/**/*.tiff
+
 # Model weight caches
 .cache/
 *.npy
